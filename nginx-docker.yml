@@ -1,0 +1,72 @@
+---
+- name: Setup Nginx in Docker
+  hosts: nginx_vm
+  become: yes
+  vars:
+    nginx_container_name: nginx_server
+    nginx_image: nginx:latest
+    host_port: 80
+    container_port: 80
+    nginx_conf_dir: /etc/nginx/conf.d
+    local_nginx_conf: ./src/nginx-conf
+    local_sources_dir: ./src 
+    build_dir: /tmp/code
+
+  tasks:
+    - name: Ensure Docker is installed
+      ansible.builtin.package:
+        name: docker
+        state: present
+
+    - name: Ensure Docker service is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Pull the Nginx Docker image
+      community.docker.docker_image:
+        name: "{{ nginx_image }}"
+        source: pull
+
+    - name: Create Nginx configuration directory
+      ansible.builtin.file:
+        path: "{{ nginx_conf_dir }}"
+        state: directory
+
+    - name: Copy Nginx configuration files
+      ansible.builtin.copy:
+        src: "{{ local_nginx_conf }}/"
+        dest: "{{ nginx_conf_dir }}/"
+
+    - name: Copy sources to build directory
+      ansible.builtin.copy:
+        src: "{{ local_sources_dir }}/"
+        dest: "{{ build_dir }}/"
+
+    - name: Stop the Docker container
+      community.docker.docker_container:
+        name: "{{ nginx_container_name }}"
+        state: absent
+
+    - name: Build Docker image
+      community.docker.docker_image:
+        name: "{{ nginx_container_name }}"
+        source: build
+        build:
+          path: "{{ build_dir }}/"
+        state: present
+
+    - name: Compose services
+      become: yes
+      community.docker.docker_compose_v2:
+        project_src: "{{ build_dir }}/"
+
+    # - name: Run Nginx container
+    #   community.docker.docker_container:
+    #     name: "{{ nginx_container_name }}"
+    #     image: "{{ nginx_image }}"
+    #     state: started
+    #     restart_policy: always
+    #     ports:
+    #       - "{{ host_port }}:{{ container_port }}"
